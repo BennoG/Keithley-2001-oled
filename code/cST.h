@@ -15,8 +15,11 @@ namespace ansStl
         void set(const cST *val);
         void set(const cST& val);
         void set(int len,const char *p);
+        void set(const char *p){ set(-1, p); }
+        void setf(const char *fmt,...);
         void append(char ch);
-        void append(const char *p);
+        //void append(const char *p);
+        void append(const char *fmt,...);
         char& operator[](int iIdx);
 		char& get(int iIdx);
         const char *buf(){ return sBuf; }

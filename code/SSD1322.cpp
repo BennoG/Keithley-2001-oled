@@ -351,8 +351,7 @@ void SSD1322::drawChar(int x, int y, uint8_t c, uint8_t fg, uint8_t bg /* b= 0 *
 void SSD1322::drawCharB(int x, int y, uint8_t c, uint8_t fg, uint8_t bg /*= 0*/)
 {
 	bool bDefined = false;
-	if (c >= 0x80) printf("char 0x%X", c);
-
+	//if (c >= 0xA0) printf("char 0x%X", c);
 	if (c >= 0xA0) { c &= 0x7F; fg = colorFlash; }
 	if (c == 0x20) bDefined = true;
 	for (int i = 0; i < 5; i++) bDefined |= (font5x7L[c][i] != 0);

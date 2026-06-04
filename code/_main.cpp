@@ -45,6 +45,7 @@ class consoleDataHandler
         bool hasCommand(){ return bConMsgDone; };
         int  getCommand(ansStl::cST& msg);
         void poll();
+        uint32_t getLastKey() {  uint32_t key = lastReceivedKey; lastReceivedKey = 0; return key; };
     private:
     void initVars() {
         bEscMsgDone = false;
@@ -60,6 +61,7 @@ class consoleDataHandler
     int iEscMsgLen;             // total numer of characters received in the special character sequence
     bool bEscMsgDone;           // true if the special character sequence is complete and ready for processing
     uint32_t lastReceivedMS;	// ms timer last character from the serial port for the special character sequence
+    uint32_t lastReceivedKey;   // last keypress we have received
 };
 
 int consoleDataHandler::getCommand(ansStl::cST& msg)
@@ -126,7 +128,7 @@ void consoleDataHandler::poll()
 /* handle all commands or characters recieved from the console
 ** so the user can interact with the program via the console, for example to trigger a reset to boot mode or to send commands to the Keithley display
 */
-void handleConsoleData(consoleDataHandler& KH)
+void handleConsoleData(consoleDataHandler& KH,keithleyDisplay& KD)
 {
     KH.poll();
     if (KH.hasSpecialMsg()) {
@@ -139,6 +141,7 @@ void handleConsoleData(consoleDataHandler& KH)
         KH.getCommand(cmd);
         printf("Received command: %s\n", cmd.buf());
         if (cmd.comparei("boot")) reset_usb_boot(0, 0);
+        if (cmd.comparei("dump")) KD.saveBuffer();
     }
 }
 
@@ -166,15 +169,19 @@ int main()
         // process any incoming data from the Keithley display
         KD.poll();
         // process any incoming data from the console (USB uart)
-        handleConsoleData(KH);
+        handleConsoleData(KH, KD);
+     
         
 		if (KD.hasUpdate())
 		{
 			msgHD = KD.getDispHeadTxts();
-			msgFT = KD.getUpdate();				// both lines (values and 2nd row)
-			msgValue = msgFT.substr(0, 20);		// big digits
-			msgFT.insDel(0, -20);				// bottom line is remainder
-			doRedraw = true;
+			msgFT = KD.getUpdate();				    // both lines (values and 2nd row)
+            if (msgFT.length() > 0)
+            {
+                msgValue = msgFT.substr(0, 20);		// big digits
+                msgFT.insDel(0, -20);				// bottom line is remainder
+                doRedraw = true;
+            }
 		}
 
         // handle flashing of characters if needed and redraw the display

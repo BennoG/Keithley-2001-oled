@@ -3,6 +3,7 @@
 #  include "stl_conio.h"
 #  include "stl_rs232.h"
 #else
+#  include <vector>
 #  include <string.h>
 #  include "pico/stdlib.h"
 #  include "hardware/timer.h"
@@ -13,48 +14,43 @@ static uint32_t stlMsTimer(uint32_t uOld)
     uint64_t uNew = time_us_64()/1000;
     return (uint32_t)(uNew  - uOld);
 }
-#endif
 
 namespace ansStl
 {
     class rs232
     {
-    private:
+        private:
         /* data */
         uart_inst_t *m_Puart;
-    public:
+        public:
         rs232() { m_Puart = NULL;};
         ~rs232() {};
         void connect(uart_inst_t *pUart){ m_Puart = pUart; }
         int getc(int iTimoutMS)
         {
-	        #if defined(PICO_RP2040)
             
             if (m_Puart == NULL) return -1;
             if (uart_is_readable_within_us(m_Puart, iTimoutMS * 1000)) 
-                return uart_getc(m_Puart) ;
+            return uart_getc(m_Puart) ;
             return -1;
-            #else
-            while (true)
-            {
-               if (uart_is_readable(m_Puart))
-                    return uart_getc(m_Puart);
-                if (iTimoutMS <= 0) return -1;
-                iTimoutMS--;
-                sleep_ms(1);
-            }
-              return -1;
-            #endif
         }
     };
 }
+
+#endif
 
 class keithleyDisplay
 {
 #define _RingSize_	 5000
 public:
 	keithleyDisplay();
+	keithleyDisplay(std::vector<uint32_t>& simData);
+	#ifdef _WIN32
+    keithleyDisplay(const char* sPortName);
+    #endif
+	#if defined(PICO_RP2040)
 	keithleyDisplay(uart_inst_t *pUart);
+    #endif
 	~keithleyDisplay();
 	void poll();
 	void saveBuffer();

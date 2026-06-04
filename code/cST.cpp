@@ -1,5 +1,7 @@
 
 #include "cST.h"
+#include <stdarg.h>
+#include <stdio.h>
 
 using namespace ansStl;
 
@@ -32,6 +34,17 @@ void cST::set(int len,const char *p)
         else   memset(sBuf, 0, _MaxCLen_ * sizeof(char));
     }
     sBuf[iLen] = 0;
+}
+void cST::setf(const char *fmt,...)
+{
+	if (fmt == NULL) return;
+	va_list args;
+	va_start(args, fmt);
+	int iRes = vsnprintf(sBuf, _MaxCLen_ - 5, fmt, args);
+	va_end(args);
+	if (iRes < 0) return;   // encoding error
+	iLen = iRes;
+	sBuf[iLen] = 0;
 }
 
 void cST::append(char ch)
@@ -85,12 +98,22 @@ cST cST::substr(int iStart, int iLength)
 	return res;
 }
 
-void cST::append(const char *p)
+//void cST::append(const char *p)
+//{
+//   if (p == NULL) return;
+//  while (*p){ append(*p); p++; }
+//}
+void cST::append(const char *fmt,...)
 {
-    if (p == NULL) return;
-    while (*p){ append(*p); p++; }
+	if (fmt == NULL) return;
+	va_list args;
+	va_start(args, fmt);
+	int iRes = vsnprintf(sBuf + iLen, _MaxCLen_ - 5 - iLen, fmt, args);
+	va_end(args);
+	if (iRes < 0) return;   // encoding error
+	iLen += iRes;
+	sBuf[iLen] = 0;
 }
-
 char& cST::operator [](int iIdx)
 {
 	if (iIdx < 0) iIdx = iLen + iIdx;	// zodat -1 laatste teken word -2 op 1 na laatste

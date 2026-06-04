@@ -1,7 +1,10 @@
 #include "keithleyDisplay.h"
 #include <stdio.h>
 #include <stdint.h>
-#include "pico/stdlib.h"
+
+#if defined(PICO_RP2040)
+#  include "pico/stdlib.h"
+#endif
 
 #ifndef uint8_t
   typedef unsigned char uint8_t;
@@ -18,12 +21,27 @@ keithleyDisplay::keithleyDisplay()
 	//con.connect("COM5", 9600, 'n', 8, 1);
 }
 
+#ifdef _WIN32
+keithleyDisplay::keithleyDisplay(std::vector<uint32_t>& simData)
+{
+	initVars();
+	con.setSimulateData(simData);
+
+}
+keithleyDisplay::keithleyDisplay(const char* sPortName)
+{
+	initVars();
+	con.connect(sPortName,9600, 'n', 8, 1);
+}
+#endif
+
+#if defined(PICO_RP2040)
 keithleyDisplay::keithleyDisplay(uart_inst_t *pUart)
 {
 	initVars();
     con.connect(pUart);
-	//con.connect(sPortName,9600, 'n', 8, 1);
 }
+#endif
 
 keithleyDisplay::~keithleyDisplay()
 {
@@ -35,23 +53,38 @@ void keithleyDisplay::poll()
 	while (true)
 	{
 		int ch = con.getc(0);
-		if (ch < 0) 
+		uint32_t diffMS = stlMsTimer(lastReceivedMS);
+
+		// part used in simulation of saved data
+		if ((ch > 0) && (ch & 0x7FFF0000)) {		// simulation bit 16-32 contains time with last character
+			diffMS = ch >> 16;
+			ch &= 0xFFFF;
+			if ((diffMS > 20u) && (iCurMsgType)) { handleCompleteMessage(); iCurMsgType = 0; }
+		}
+		// end simulation data
+
+		if (ch < 0)
 		{
 			// if we have no data for 200ms the commit the current buffer
-			if ((iCurMsgType) && (stlMsTimer(lastReceivedMS) > 25u))		// after 20 ms of silence assume the message is complete
+			if ((iCurMsgType) && (diffMS > 20u))		// after 20 ms of silence assume the message is complete
 			{
 				handleCompleteMessage();
 				iCurMsgType = 0;
 			}
 			break;
 		}
-	
+		
 		// for debugging so we can dump the last 4k bytes 
-		lastReceivedMS = stlMsTimer(0);
+		lastReceivedMS += diffMS;
 		ringBuffer[ringHead] = ch;
 		ringBufferMS[ringHead] = lastReceivedMS;
 		ringHead = (ringHead + 1) % _RingSize_;
-
+		
+		if (iDoubleByteCmd == 0x09){
+			if (ch == 0) continue;		// ignore the 0 char after 09 command reason unknown but we can ignore it
+			iDoubleByteCmd = 0;
+		}
+		
 		// detect if we have start of new data message
 		bool bStartNext = ((ch <= 0x0F) && (iReadLeng == 0) && (iDoubleByteCmd == 0));
 		if ((iReadLeng > 0) && (msg.length() >= iReadLeng)) bStartNext = true;
@@ -59,6 +92,9 @@ void keithleyDisplay::poll()
 		// detect if the start is a double byte command message
 		if ((iDoubleByteCmd == 0) && (bStartNext))
 		{
+			// 08 01 80 80 80
+			if (ch == 0x08) iDoubleByteCmd = 0x04;		// same as 04 01 ???
+			if (ch == 0x09) iDoubleByteCmd = ch;		// 09 is followed by some 0 chars reason unknown but we can ignore it
 			// 0B 01  flashing text on  0B 00 flashing text off
 			if (ch == 0x0B) iDoubleByteCmd = ch;
 			// 0D 03  save next text in buffer for repeated use 04 04
@@ -67,8 +103,9 @@ void keithleyDisplay::poll()
 			if (ch == 0x04)	iDoubleByteCmd = ch;
 			if (iDoubleByteCmd) continue;
 			// 06 07 (tipple byte command)
-			if (ch == 0x0F){ iDoubleByteCmd = 4; ch = 0;}
+			//if (ch == 0x0F){ iDoubleByteCmd = 4; ch = 0;}
 		}
+
 
 		if (iDoubleByteCmd)
 		{
@@ -91,9 +128,10 @@ void keithleyDisplay::poll()
 					msg[0] = iCmdPar;
 				iMsgDupOffset = 1;
 			}
-			if (iCmd == 4)
+			if ((iCmd == 4) && (iCmdPar > 0))
 			{
-				msg.set(msgDup);
+				if (msgDup.length() > 0) msg.set(msgDup);
+				else msg.set(msgLatest);
 				iMsgDupOffset = iCmdPar;
 			}
 			continue;
@@ -112,6 +150,8 @@ void keithleyDisplay::poll()
 			if ((iCurMsgType == 6) || (iCurMsgType == 7)) iReadLeng = 2;
 			continue;
 		}
+		if ((iCurMsgType == 0) && (ch >= 0x20) && (ch <= 0xB0))
+			iCurMsgType = 0x04;
 
 		if (iCurMsgType) 
 		{
@@ -169,8 +209,12 @@ ansStl::cST keithleyDisplay::getDispHeadTxts()
 #ifdef _PrintCmds_
 void showDisplay(ansStl::cST msg, ansStl::cST& msDup, ansStl::cST& msLst)
 {
-	for (int i = 0; i < msg.length(); i++) msg[i] &= 0x7F;
-	printf("-%d-%d-%2d-\"%s\"\r\n", msDup.length(), msLst.length(), msg.length(), msg.buf());
+    #if defined(PICO_RP2040)
+	for (int i = 0; i < msg.length(); i++) if ((((uint8_t)msg[i]) >= 0x7F) || (msg[i] < 32)) msg[i] = '.';
+	#else
+	for (int i = 0; i < msg.length(); i++) if (((uint8_t)msg[i]) > 0xB0) msg[i] &= 0x7F;
+	#endif
+	printf("-%2d-%2d-%2d-\"%s\"\r\n", msDup.length(), msLst.length(), msg.length(), msg.buf());
 }
 #endif
 
@@ -260,18 +304,20 @@ void keithleyDisplay::handleCompleteMessage()
 
 void keithleyDisplay::saveBuffer()
 {
-	#ifdef _WIN32
 	ansStl::cST sFN;
 	ansStl::cST hMSG;
 	int iLeng = (_RingSize_ - 100) & 0xFFFE0;
 	int iStart = ringHead - iLeng;
 	if (iStart < 0) iStart += _RingSize_;
+	uint32_t lastMS = ringBufferMS[iStart];
+	int iRowBytes = 32;
+
+	#ifdef _WIN32
 	sFN.consume(stlDateFormat("dump%H%M%S.txt"));
 	FILE* f1 = fopen(sFN, "wb");
-	uint32_t lastMS = ringBufferMS[iStart];
 	if (f1)
+	#endif
 	{
-		int iRowBytes = 32;
 		for (int iOfs = 0; iOfs < iLeng; iOfs += iRowBytes)
 		{
 			hMSG.setf("0x%04X - ", iOfs);
@@ -291,7 +337,13 @@ void keithleyDisplay::saveBuffer()
 					hMSG.append('.');
 			}
 			hMSG.append("\r\n");
+
+			#if defined(PICO_RP2040)
+			printf("%s",hMSG.buf());
+			#else
 			fwrite(hMSG.buf(), hMSG.length(), 1, f1);
+			#endif
+
 
 			// timing interval of the characters
 			hMSG.set("-- int --");
@@ -299,18 +351,25 @@ void keithleyDisplay::saveBuffer()
 			{
 				int idx = (iStart + iOfs + i) % _RingSize_;
 				uint32_t diffMS = ringBufferMS[idx] - lastMS;
-				hMSG.append("%3d", diffMS);
 				lastMS += diffMS;
+				if (diffMS > 999) diffMS = 999;
+				hMSG.append("%3d", diffMS);
 			}
 			hMSG.append("\r\n");
+
+			#if defined(PICO_RP2040)
+			printf("%s",hMSG.buf());
+			#else
 			fwrite(hMSG.buf(), hMSG.length(), 1, f1);
+			#endif
 		
 			hMSG.clear();
 		}
+		#ifdef _WIN32
 		fclose(f1);
+		#endif
 		printf("saved to %s done", sFN.buf());
 	}
-    #endif
 }
 
 
