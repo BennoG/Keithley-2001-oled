@@ -10,8 +10,43 @@
   typedef unsigned char uint8_t;
 #endif
 
-// machine starts with 0xB7 and 0x0F
-// then ascii text with the model number without the 2 leading command bytes
+// key-press on the front-panel of the K2001 display
+
+ /*   K2001  key from display to CPU
+ *    Key    Press      Release
+ *    Up ^   0x41 'A'   0x40 '@'
+ *    Temp   0x42 'B'   0x40 '@'
+ *    Left<  0x43 'C'	0x40 '@'
+ *    Menu   0x44 'D'	0x40 '@'
+ *    ACI    0x45 'E'   0x40 '@'
+ *    Store  0x46 'F'	0x40 '@'
+ *    Local  0x47 'G'	0x40 '@'
+ *  D Prev   0c48 'H'   0x40 '@'
+ *    Auto   0x49 'I'	0x40 '@'
+ *    Right> 0x4A 'J'	0x40 '@'
+ *    Ext    0x4B 'K'	0x40 '@'
+ *    Ohm2   0x4C 'L'   0x40 '@'
+ *    Recall 0x4D 'M'	0x40 '@'
+ *    Chan   0x4E 'N	0x40 '@'
+ *    DCV    0x4F 'O'   0x40 '@'
+ *  D Next   0x50 'P'   0x40 '@'
+ *    Down v 0x51 'Q'	0x40 '@'
+ *    Enter  0x52 'R'	0x40 '@'
+ *    Ohm4   0x53 'S'   0x40 '@'
+ *    Filter 0x54 'T'	0x40 '@'
+ *    Scan   0x55 'U'	0x40 '@'
+ *    ACV    0x56 'V'   0x40 '@'
+ *    Rel    0x57 'W'   0x40 '@'
+ *           0x58 'X'   0x40 '@'
+ *           0x59 'Y'   0x40 '@'
+ *    Freq   0x5A 'Z'   0x40 '@'
+ *    Math   0x5B '['	0x40 '@'
+ *    Config 0x5C '\'	0x40 '@'
+ *    DCI    0x5D ']'   0x40 '@'
+ *    TRG    0x5E '^'   0x40 '@'
+ *    Info   0x5F '_'	0x40 '@'
+ */
+
 
 keithleyDisplay::keithleyDisplay()
 {
@@ -92,6 +127,8 @@ void keithleyDisplay::poll()
 		// detect if the start is a double byte command message
 		if ((iDoubleByteCmd == 0) && (bStartNext))
 		{
+			// 04 00   start new normal text  04 01 overwrite previous text starting at position 1
+			if (ch == 0x04)	iDoubleByteCmd = ch;
 			// 08 01 80 80 80
 			if (ch == 0x08) iDoubleByteCmd = 0x04;		// same as 04 01 ???
 			if (ch == 0x09) iDoubleByteCmd = ch;		// 09 is followed by some 0 chars reason unknown but we can ignore it
@@ -99,8 +136,9 @@ void keithleyDisplay::poll()
 			if (ch == 0x0B) iDoubleByteCmd = ch;
 			// 0D 03  save next text in buffer for repeated use 04 04
 			if (ch == 0x0D) iDoubleByteCmd = ch;
-			// 04 00   start new normal text  04 01 overwrite previous text starting at position 1
-			if (ch == 0x04)	iDoubleByteCmd = ch;
+			// CPU ask for identification use only when we are the soul controller (so we do also all the key-presses)
+			// if (ch == 0x0F) { con.writef("200x/700x A02  "); con.write("\x80\x00",2); }
+			if (ch == 0xF) continue;					// ignore otherwise
 			if (iDoubleByteCmd) continue;
 			// 06 07 (tipple byte command)
 			//if (ch == 0x0F){ iDoubleByteCmd = 4; ch = 0;}
