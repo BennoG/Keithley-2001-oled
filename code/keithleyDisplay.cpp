@@ -10,7 +10,41 @@
   typedef unsigned char uint8_t;
 #endif
 
-// key-press on the front-panel of the K2001 display
+// the K2000 signal levesl are 3.3V
+// the K2001 signal levels are 5V
+
+// key-press on the front-panel of the K2000 display
+/*  K2000 key from display to CPU
+ *    Shift  0x41 'A'   0x40 '@'
+ *    DCV    0x42 'B'   0x40 '@'
+ *    ACV    0x43 'C'   0x40 '@'
+ *    DCI    0x44 'D'   0x40 '@'
+ *    ACI	 0x45 'E'   0x40 '@'
+ *    Ohm2   0x46 'F'   0x40 '@'
+ *    Ohm4   0x47 'G'   0x40 '@'
+ *    Freq   0x48 'H'   0x40 '@'
+ *    Up^    0x4B 'K'   0x40 '@'
+ *    Auto   0x4C 'L'   0x40 '@'
+ *    Down   0x4D 'M'   0x40 '@'
+ *    Enter  0x4E 'N'   0x40 '@'
+ *    Ritht> 0x4F 'O'   0x40 '@'
+ *    Temp   0x50 'P'   0x40 '@'
+ *    Local  0x51 'Q'   0x40 '@'
+ *    ExtTrg 0x52 'R'   0x40 '@'
+ *    Trig   0x53 'S'   0x40 '@'
+ *    Store  0x54 'T'   0x40 '@'
+ *    Recall 0x55 'U'   0x40 '@'
+ *    Filter 0x56 'V'   0x40 '@'
+ *    Rel	 0x57 'W'   0x40 '@'
+ *    Left<  0x58 'X'   0x40 '@'
+ *    Open   0x5A 'Z'   0x40 '@'
+ *    Colse  0x5B '['   0x40 '@'
+ *    Step   0x5C '\'	0x40 '@'
+ *    Scan   0x5D ']'   0x40 '@'
+ *    Digits 0x5E '^'   0x40 '@'
+ *    Rate   0x5F '_'	0x40 '@'
+ *    Exit   0x60 '`'   0x40 '@'
+*/
 
  /*   K2001  key from display to CPU
  *    Key    Press      Release
@@ -51,9 +85,6 @@
 keithleyDisplay::keithleyDisplay()
 {
 	initVars();
-	//con.setSimulateDataHex(hexSim);
-	//con.connect("COM3", 9600, 'n', 8, 1);
-	//con.connect("COM5", 9600, 'n', 8, 1);
 }
 
 #ifdef _WIN32
@@ -89,6 +120,10 @@ void keithleyDisplay::poll()
 	{
 		int ch = con.getc(0);
 		uint32_t diffMS = stlMsTimer(lastReceivedMS);
+
+		// if the first char we receive after startup is B7 then we have a K2001
+		if ((ch == 0xB7) && (ringHead == 0)) bSingleByteOptions = false;		// K2001 has 2 byte options for the 06 and 07 commands otherwise we have a K2000 with single byte options
+
 
 		// part used in simulation of saved data
 		if ((ch > 0) && (ch & 0x7FFF0000)) {		// simulation bit 16-32 contains time with last character
@@ -127,6 +162,40 @@ void keithleyDisplay::poll()
 		// detect if the start is a double byte command message
 		if ((iDoubleByteCmd == 0) && (bStartNext))
 		{
+
+			// on k2000 the following commands of the options
+			// 06 xx  the 2001 does 06 xx xx
+			// 07 xx  the 2001 does 07 xx xx
+			// 08 xx
+			// 09 xx
+			// 0A xx
+			// 0E xx 
+			// 00 80 00 00 00 00 shift
+			// 00 01 00 00 00 00 <>
+			// 00 02 00 00 00 00 4w
+			// 00 04 00 00 00 00 .>) beep
+			// 00 08 00 00 00 00 ->|- diode
+			// 00 00 01 00 00 00 slow 
+			// 00 00 02 00 00 00 med
+			// 00 00 04 00 00 00 fast
+			// 00 00 08 00 00 00 trig
+			// 00 00 00 10 00 00 auto
+			// 00 00 00 20 00 00 flt   
+			// 00 00 00 40 00 00 rel
+			// 00 00 00 04 00 00 *
+			// 00 00 00 00 08 00 step
+			//if (bSingleByteOptions)
+			{
+				if ((ch == 0x6) || (ch == 0x7) || (ch == 0x8) || (ch == 0x9) || (ch == 0xA) || (ch == 0xE)) 
+				{
+					if (iCurMsgType) handleCompleteMessage();
+					iReadLeng = bSingleByteOptions ? 1 : 2;
+					iCurMsgType = ch;
+					//printf("msg %d len %d\r\n", iCurMsgType, iReadLeng);
+					continue;
+				}
+			}
+
 			// 04 00   start new normal text  04 01 overwrite previous text starting at position 1
 			if (ch == 0x04)	iDoubleByteCmd = ch;
 			// 08 01 80 80 80
@@ -137,7 +206,11 @@ void keithleyDisplay::poll()
 			// 0D 03  save next text in buffer for repeated use 04 04
 			if (ch == 0x0D) iDoubleByteCmd = ch;
 			// CPU ask for identification use only when we are the soul controller (so we do also all the key-presses)
+			// For k2001 the responce is as below
 			// if (ch == 0x0F) { con.writef("200x/700x A02  "); con.write("\x80\x00",2); }
+			// for K2000 the responce is as below
+			// if (ch == 0x0F) { con.writef("2000 A02  "); con.write("\x80\x00",2); }
+
 			if (ch == 0xF) continue;					// ignore otherwise
 			if (iDoubleByteCmd) continue;
 			// 06 07 (tipple byte command)
@@ -155,6 +228,7 @@ void keithleyDisplay::poll()
 			// if we start at a offset get last complete message from memory
 			uint8_t iCmd    = iCurMsgType & 0xFF;
 			uint8_t iCmdPar = iCurMsgType >> 8;
+			// on the K2000 the message is usually preceeded by a single 0D folowed byt ye messaga in ASCII
 			// in some cases 0xD is used a <CR> and we overwrite the current line starting at position 0
 			if ((iCmd == 0x0D) && (iCmdPar >= 0x10))
 			{
@@ -186,6 +260,7 @@ void keithleyDisplay::poll()
 			if (iCurMsgType) handleCompleteMessage();
 			iCurMsgType = ch;
 			if ((iCurMsgType == 6) || (iCurMsgType == 7)) iReadLeng = 2;
+			//if (iReadLeng != 0) printf("msg %d len %d opt %d\r\n", iCurMsgType, iReadLeng,bSingleByteOptions);
 			continue;
 		}
 		if ((iCurMsgType == 0) && (ch >= 0x20) && (ch <= 0xB0))
@@ -242,25 +317,40 @@ ansStl::cST keithleyDisplay::getDispHeadTxts()
 	return res;// "EDIT ERR REM TALK LSTN SRQ REAR REL FILT MATH 4W AUTO ARM TRIG * SMPL"
 }
 
-#define _PrintCmds_
-
-#ifdef _PrintCmds_
-void showDisplay(ansStl::cST msg, ansStl::cST& msDup, ansStl::cST& msLst)
+void showDisplay(ansStl::cST msg, ansStl::cST& msDup, ansStl::cST& msLst,int iDebugBits)
 {
     #if defined(PICO_RP2040)
 	for (int i = 0; i < msg.length(); i++) if ((((uint8_t)msg[i]) >= 0x7F) || (msg[i] < 32)) msg[i] = '.';
 	#else
 	for (int i = 0; i < msg.length(); i++) if (((uint8_t)msg[i]) > 0xB0) msg[i] &= 0x7F;
 	#endif
-	printf("-%2d-%2d-%2d-\"%s\"\r\n", msDup.length(), msLst.length(), msg.length(), msg.buf());
+	if (iDebugBits & 2)
+		printf("-%2d-%2d-%2d-",msDup.length(), msLst.length(), msg.length());
+	printf("\"%s\"\r\n", msg.buf());
 }
-#endif
 
 
 void keithleyDisplay::handleCompleteMessage()
 {
 	if (iCurMsgType == 0) return;
 	uint8_t iCmd = iCurMsgType & 0xFF;
+	if (bSingleByteOptions) 
+	{
+		if ((iCmd == 0x6) || (iCmd == 0x7) || (iCmd == 0x8)|| (iCmd == 0x9)|| (iCmd == 0xA)|| (iCmd == 0xE)) 
+		{
+			k2000bits[iCmd] = msg[0];
+			msg.clear();
+			iCurMsgType = 0;
+			iReadLeng = 0;
+			iMsgDupOffset = 0;
+			if (!k2000bits.compare(k2000bitsOld)){
+				k2000bitsOld.set(k2000bits);
+				printf("Option tp %02X -- %02X %02X %02X %02X %02X %02X\r\n",iCmd,k2000bits[6] & 0xFF, k2000bits[7] & 0xFF, k2000bits[8] & 0xFF, k2000bits[9] & 0xFF, k2000bits[10] & 0xFF, k2000bits[14] & 0xFF);
+			}
+			return;
+		}
+	}
+
 	switch (iCmd)
 	{
 	case 0x0D:		
@@ -269,22 +359,22 @@ void keithleyDisplay::handleCompleteMessage()
 		msgDup.set(msg);
 	case 0x04:
 	{
-#ifdef _PrintCmds_
-		uint8_t iCmdPar = iCurMsgType >> 8;
-		printf("-- %02X %02X --", iCmd, iCmdPar);
-		showDisplay(msg, msgDup, msgLatest);
-#endif
+		if (iDebugBits & 1)
+		{
+			uint8_t iCmdPar = iCurMsgType >> 8;
+			printf("-- %02X %02X --", iCmd, iCmdPar);
+			showDisplay(msg, msgDup, msgLatest,iDebugBits);
+		}
 		bValidCom = true;
-		//printf("string %s", msg.buf());
 		msgLatest = msg;
 		bIsUpdated = true;
 		break;
 	}
 	case 6:
-		/*  Filter off
-		** enable rear flt auto arm  0x4019  0x4000  rear
-		** 06 40 19  == 0x4019  (rear,arm,auto,flt)                        
-        ** 07 BF E6  xor 0xFFFF  of the 06 frame    
+		/*   K2000 display seems to have a 1 byte message for the option bits
+		**         06 07 08 09 0A and 0E 
+		*/
+		/*  K2001 display has a 2 byte message with bits for the display header text as below
 		**   ** values of 06 **
 		**    0x0001  FLT
 		**    0x0002  MATH

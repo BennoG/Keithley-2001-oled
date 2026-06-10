@@ -59,8 +59,9 @@ public:
 	ansStl::cST getUpdate() { bIsUpdated = false; return msgLatest; };
 private:
 	void initVars() {
-		iCurMsgType = 0;  bValidCom = false; iReadLeng = 0; bUnExpected = false;
+		iCurMsgType = 0;  bValidCom = false; iReadLeng = 0; bUnExpected = false; bIsUpdated = false; flashChars = false;
 		iInsPosition = -1; iDoubleByteCmd = 0; flashChars = false; iMsgDupOffset = 0; msg67bits = 0;    
+		bSingleByteOptions = true; k2000bits.clear(); k2000bits.insDel(0,16); iDebugBits = 0;
          #ifdef _RingSize_
 		lastReceivedMS = 0;
         memset(ringBufferMS, 0, sizeof(ringBufferMS));
@@ -69,13 +70,16 @@ private:
         #endif
 	}
 	ansStl::rs232 con;
-	
+	ansStl::cST k2000bits;		// for now we do 16 bytes problably only need offset 06 07 08 09 0A and 0E
+	ansStl::cST k2000bitsOld;	// for now we do 16 bytes problably only need offset 06 07 08 09 0A and 0E
 	int msg67bits;
 	ansStl::cST msg, msg7, msg6;
 	ansStl::cST msgDup;
-	
 	ansStl::cST msgLatest;
-	bool bIsUpdated;
+	bool bIsUpdated;		// true if we have a new message for the display
+	bool bSingleByteOptions; // for the K2000 we have single byte options for the 06 and 07 commands
+	int iDebugBits;			// for debugging so we can log different kind of events
+
 
 	int iMsgDupOffset;		// offset in previous message for repeated use with minor differences
 	int iCurMsgType;

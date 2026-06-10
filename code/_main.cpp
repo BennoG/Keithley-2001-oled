@@ -154,6 +154,7 @@ int main()
     keithleyDisplay KD(UART_ID);
 	SSD1322 oled;
 	oled.init();
+    oled.clear();
 
     uint8_t loopTel = 0;
 
