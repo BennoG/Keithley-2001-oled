@@ -18,16 +18,20 @@ namespace ansStl
         void set(const char *p){ set(-1, p); }
         void setf(const char *fmt,...);
         void append(char ch);
-        //void append(const char *p);
-        void append(const char *fmt,...);
+        void append(const char *p);
+        void appendf(const char *fmt,...);
         char& operator[](int iIdx);
 		char& get(int iIdx);
         const char *buf(){ return sBuf; }
         bool compare(const cST& val);
         bool compare(const char *val);
         bool comparei(const char *val);
+        bool startsWith(const char *scmp,bool caseSensitive = true);
         void insDel(int pos,int len,char chFill = 0);
         cST substr(int iStart, int iLength);
+        cST getDlm(int iD1,char cDlm);
+        int toInt(int iRadiX = 0);
+        double toDouble();
         void clear();
 
     private:
@@ -36,6 +40,9 @@ namespace ansStl
         int iLen;
         char sBuf[_MaxCLen_];
         char cDummy;
+        /* INTERNAL */
+        // Sets start and end pos of search character (from begin or end)
+        int _strTlGetOfs(char sSrc,int iCnt,int *pStart,int *pEind);
     };
-     
+
 }

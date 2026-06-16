@@ -11,6 +11,8 @@
 #  include <gpiod.h>
 #endif
 
+#include "gfxfont.h"
+
 // SPI Defines
 // We are going to use SPI 0, and allocate it to the following GPIO pins
 // Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
@@ -52,20 +54,30 @@ public:
 	void close();
 	void clear(uint8_t gray = 0);
 	void setPixel(int x, int y, uint8_t gray);
+	void aaPixel(int x, int y,uint8_t gray);
 	uint8_t getPixel(int x, int y) const;
 	void fillRect(int x, int y, int w, int h, uint8_t gray);
 	void hLine(int x, int y, int len, uint8_t gray);
 	void vLine(int x, int y, int len, uint8_t gray);
 	void drawRect(int x, int y, int w, int h, uint8_t gray);
 	void drawCircle(int cx, int cy, int r, uint8_t gray);
-	void drawChar(int x, int y, uint8_t c, uint8_t fg, uint8_t bg = 0);
-	void drawCharB(int x, int y, uint8_t c, uint8_t fg, uint8_t bg = 0);
+	int  drawChar(const GFXfont* font, int x, int y, uint8_t c, uint8_t fg, uint8_t bg = 0);
+	int  drawChar(int x, int y, uint8_t c, uint8_t fg, uint8_t bg = 0);
+	int  drawCharB(int x, int y, uint8_t c, uint8_t fg, uint8_t bg = 0);
 	void drawString(int x, int y, const char* str, uint8_t fg, uint8_t bg = 0,int iHorExtra = 0);
-	void drawStringB(int x, int y, const char* str, uint8_t fg, uint8_t bg = 0);
+	void drawString(const GFXfont* font,int x, int y, const char* str, uint8_t fg, uint8_t bg = 0,int iHorExtra = 0);
+	void drawStringB(int x, int y, const char* str, uint8_t fg, uint8_t bg = 0,int iHorExtra = 0);
+	void fastAA(int y1 = 0, int y2 = -1);
 	void update();
 	void setContrast(uint8_t val);
 	void sleep(bool on);
 	uint8_t colorFlash;
+	int   curFontShigh;				// this is the hight of the small font (because GFXfont is measured from the bottom up)
+	const GFXfont* curFontS;		// it this is not NULL we use this font for drawing chars
+	const GFXfont* curFontSspec;	// special keithley characters
+	int   curFontBhigh;				// this is the hight of the small font (because GFXfont is measured from the bottom up)
+	const GFXfont* curFontB;		// it this is not NULL we use this font for drawing chars
+	const GFXfont* curFontBspec;	// special keithley characters
 private:
 	void initVars() 
 	{
@@ -77,6 +89,7 @@ private:
 		colorFlash = 4;
 		DISPLAY_WIDTH = 256; DISPLAY_HEIGHT = 64;
 		fb_.resize((DISPLAY_HEIGHT * DISPLAY_WIDTH) / 2, 0);
+		curFontS = NULL; curFontSspec = NULL; curFontB = NULL; curFontBspec = NULL; curFontShigh = curFontBhigh = 0;
 	}
 	// config
 	int DISPLAY_WIDTH;

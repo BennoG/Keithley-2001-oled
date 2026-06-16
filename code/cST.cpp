@@ -1,5 +1,6 @@
 
 #include "cST.h"
+#include <cstdlib>
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -35,6 +36,7 @@ void cST::set(int len,const char *p)
     }
     sBuf[iLen] = 0;
 }
+
 void cST::setf(const char *fmt,...)
 {
 	if (fmt == NULL) return;
@@ -98,12 +100,85 @@ cST cST::substr(int iStart, int iLength)
 	return res;
 }
 
-//void cST::append(const char *p)
-//{
-//   if (p == NULL) return;
-//  while (*p){ append(*p); p++; }
-//}
-void cST::append(const char *fmt,...)
+/* INTERNAL */
+// Sets start and end pos of search character (from begin or end)
+int cST::_strTlGetOfs(char sSrc,int iCnt,int *pStart,int *pEind)
+{
+	char *pBuf = sBuf;
+	int iStart=*pStart,iEind=*pEind;
+	if (iCnt==0) return 0;		// We want it all return immediately
+	if (iCnt>0){
+		pBuf+=iStart;			// Set buffer pointer to start from where to search
+		while (iStart<iEind){
+			iStart++;
+			if (*pBuf++==sSrc){
+				iCnt--;
+				if (iCnt==1) *pStart=iStart;
+				else if (iCnt==0){
+					if (pEind) *pEind=iStart-1;
+					return 0;
+				}
+			}
+		}
+		if (iCnt>1) *pStart=*pEind;	// not enough delimitrs fouund set start to end pos and return missing delimiter cou
+		return (iCnt-1);
+	}
+	// Search backwards (from the end of the data)
+	pBuf+=iEind-1;					// Don't bother if pointer becomes before actual data
+	if (iCnt==-1){					// We want only the data beyond the end
+		*pStart=*pEind;
+		if (iEind>iStart) return 1;	// Data is avail (so store needs extra delimiter)
+		return 0;
+	}
+	while (iEind>iStart){
+		iEind--;
+		if (*pBuf--==sSrc){
+			iCnt++;
+			if (iCnt==-2) *pEind=iEind;
+			else if (iCnt==-1){
+				if (pStart) *pStart=iEind+1;
+				return 0;
+			}
+		}
+	}
+	if (iCnt<-2) *pEind=*pStart;	// We wanted further back than te beginning.
+	return (iCnt+2);				// Signal it back to caller
+}
+
+
+/* Get value with user delimiter
+ *  iD1  index to get (neg count from the back)
+ *  cDlm character to use as delimiter
+ * Return SubPart of STP
+*/
+cST cST::getDlm(int iD1,char cDlm)
+{
+	cST res;
+	int iEind  = iLen;
+	int iStart = 0;
+	_strTlGetOfs(cDlm,iD1,&iStart,&iEind);
+	int len = iEind - iStart;
+	if (len > 0) res.set(len, sBuf + iStart);
+	return res;
+}
+
+int ansStl::cST::toInt(int iRadiX /* = 0 */)
+{
+	return strtol(sBuf,NULL,iRadiX);
+}
+
+double ansStl::cST::toDouble()
+{
+	return strtod(sBuf,NULL);
+}
+
+void cST::append(const char *p)
+{
+   if (p == NULL) return;
+  while (*p){ append(*p); p++; }
+}
+
+void cST::appendf(const char *fmt,...)
 {
 	if (fmt == NULL) return;
 	va_list args;
@@ -114,6 +189,7 @@ void cST::append(const char *fmt,...)
 	iLen += iRes;
 	sBuf[iLen] = 0;
 }
+
 char& cST::operator [](int iIdx)
 {
 	if (iIdx < 0) iIdx = iLen + iIdx;	// zodat -1 laatste teken word -2 op 1 na laatste
@@ -143,6 +219,19 @@ bool cST::compare(const cST &val)
 {
     if (iLen != val.iLen) return false;
     return (memcmp(sBuf,val.sBuf,iLen) == 0);
+}
+bool cST::startsWith(const char *scmp,bool caseSensitive /* = true */)
+{
+	if ((scmp == NULL) && (iLen == 0)) return true;
+	if ((scmp) && (sBuf))
+	{
+		int cmpLen = (int)strlen(scmp);
+		if (cmpLen > iLen) return false;
+		if (caseSensitive)
+			return (strncmp(scmp,sBuf,cmpLen) == 0);
+		return (strncasecmp(scmp,sBuf,cmpLen) == 0);
+	}
+	return false;
 }
 
 void cST::clear()

@@ -10,6 +10,8 @@
   typedef unsigned char uint8_t;
 #endif
 
+extern int iDebugBits;			// for debugging so we can log different kind of events (defined in main.cpp)
+
 // the K2000 signal levesl are 3.3V
 // the K2001 signal levels are 5V
 
@@ -116,27 +118,42 @@ keithleyDisplay::~keithleyDisplay()
 
 void keithleyDisplay::poll()
 {
+	const uint32_t msgTimeoutMS = 50u;
+
+	switch (iDeviceType)
+	{
+	case 2000:
+		bSingleByteOptions = true;
+		break;
+	case 2001:
+		bSingleByteOptions = false;
+		break;
+	}
+
 	while (true)
 	{
 		int ch = con.getc(0);
 		uint32_t diffMS = stlMsTimer(lastReceivedMS);
 
 		// if the first char we receive after startup is B7 then we have a K2001
-		if ((ch == 0xB7) && (ringHead == 0)) bSingleByteOptions = false;		// K2001 has 2 byte options for the 06 and 07 commands otherwise we have a K2000 with single byte options
-
+		if ((ch == 0xB7) && (ringHead == 0) && (iDeviceType == 0))
+		{
+			iDeviceType = 2001;
+			bSingleByteOptions = false;		// K2001 has 2 byte options for the 06 and 07 commands otherwise we have a K2000 with single byte options
+		}
 
 		// part used in simulation of saved data
 		if ((ch > 0) && (ch & 0x7FFF0000)) {		// simulation bit 16-32 contains time with last character
 			diffMS = ch >> 16;
 			ch &= 0xFFFF;
-			if ((diffMS > 20u) && (iCurMsgType)) { handleCompleteMessage(); iCurMsgType = 0; }
+			if ((diffMS > msgTimeoutMS) && (iCurMsgType)) { handleCompleteMessage(); iCurMsgType = 0; }
 		}
 		// end simulation data
 
-		if (ch < 0)
+		if (ch < 0)		// no more data in the fifo see if we can start updating the screen
 		{
-			// if we have no data for 200ms the commit the current buffer
-			if ((iCurMsgType) && (diffMS > 20u))		// after 20 ms of silence assume the message is complete
+			// if we have no data for 5ms the commit the current buffer
+			if ((iCurMsgType) && (diffMS > msgTimeoutMS))		// after 50 ms of silence assume the message is complete
 			{
 				handleCompleteMessage();
 				iCurMsgType = 0;
@@ -150,11 +167,11 @@ void keithleyDisplay::poll()
 		ringBufferMS[ringHead] = lastReceivedMS;
 		ringHead = (ringHead + 1) % _RingSize_;
 		
-		if (iDoubleByteCmd == 0x09){
-			if (ch == 0) continue;		// ignore the 0 char after 09 command reason unknown but we can ignore it
-			iDoubleByteCmd = 0;
-		}
-		
+		//if (iDoubleByteCmd == 0x09){
+		//	if (ch == 0) continue;		// ignore the 0 char after 09 command reason unknown but we can ignore it
+		//	iDoubleByteCmd = 0;
+		//}
+	
 		// detect if we have start of new data message
 		bool bStartNext = ((ch <= 0x0F) && (iReadLeng == 0) && (iDoubleByteCmd == 0));
 		if ((iReadLeng > 0) && (msg.length() >= iReadLeng)) bStartNext = true;
@@ -162,14 +179,16 @@ void keithleyDisplay::poll()
 		// detect if the start is a double byte command message
 		if ((iDoubleByteCmd == 0) && (bStartNext))
 		{
-
 			// on k2000 the following commands of the options
+			// 02     single byte command what does this do ???
 			// 06 xx  the 2001 does 06 xx xx
 			// 07 xx  the 2001 does 07 xx xx
 			// 08 xx
 			// 09 xx
 			// 0A xx
 			// 0E xx 
+			//  6  7  8  9  A  E
+			// 00 10 00 00 00 00 rear
 			// 00 80 00 00 00 00 shift
 			// 00 01 00 00 00 00 <>
 			// 00 02 00 00 00 00 4w
@@ -184,67 +203,70 @@ void keithleyDisplay::poll()
 			// 00 00 00 40 00 00 rel
 			// 00 00 00 04 00 00 *
 			// 00 00 00 00 08 00 step
-			//if (bSingleByteOptions)
+
+			if (iDebugBits & 8)
+				printf("iDoubleByteCmd start 0x%X\r\n",ch);
+
+			if (ch == 0x2)
 			{
-				if ((ch == 0x6) || (ch == 0x7) || (ch == 0x8) || (ch == 0x9) || (ch == 0xA) || (ch == 0xE)) 
-				{
-					if (iCurMsgType) handleCompleteMessage();
-					iReadLeng = bSingleByteOptions ? 1 : 2;
-					iCurMsgType = ch;
-					//printf("msg %d len %d\r\n", iCurMsgType, iReadLeng);
-					continue;
-				}
+				if (iCurMsgType) handleCompleteMessage();
+				//msg.set(msgLatest);	// do we need this ?
+				continue;
 			}
 
-			// 04 00   start new normal text  04 01 overwrite previous text starting at position 1
-			if (ch == 0x04)	iDoubleByteCmd = ch;
-			// 08 01 80 80 80
-			if (ch == 0x08) iDoubleByteCmd = 0x04;		// same as 04 01 ???
-			if (ch == 0x09) iDoubleByteCmd = ch;		// 09 is followed by some 0 chars reason unknown but we can ignore it
-			// 0B 01  flashing text on  0B 00 flashing text off
-			if (ch == 0x0B) iDoubleByteCmd = ch;
-			// 0D 03  save next text in buffer for repeated use 04 04
-			if (ch == 0x0D) iDoubleByteCmd = ch;
-			// CPU ask for identification use only when we are the soul controller (so we do also all the key-presses)
+			if (ch != 0xF)
+			//if ((ch == 0x6) || (ch == 0x7) || (ch == 0x8) || (ch == 0x9) || (ch == 0xA) || (ch == 0xE)) 
+			{
+				if ((iCurMsgType) && (ch != 0x0B)) handleCompleteMessage();
+				if (bSingleByteOptions){ iDoubleByteCmd = ch; continue; } 
+				if ((ch == 0x6) || (ch == 0x7)) { iReadLeng = 2; iCurMsgType = ch; } else	iDoubleByteCmd = ch;
+			}
+				
 			// For k2001 the responce is as below
 			// if (ch == 0x0F) { con.writef("200x/700x A02  "); con.write("\x80\x00",2); }
 			// for K2000 the responce is as below
 			// if (ch == 0x0F) { con.writef("2000 A02  "); con.write("\x80\x00",2); }
-
-			if (ch == 0xF) continue;					// ignore otherwise
-			if (iDoubleByteCmd) continue;
-			// 06 07 (tipple byte command)
-			//if (ch == 0x0F){ iDoubleByteCmd = 4; ch = 0;}
+			continue;
 		}
-
 
 		if (iDoubleByteCmd)
 		{
 			if (iDoubleByteCmd == 0x0B) { flashChars = (ch != 0); iDoubleByteCmd = 0; continue; }		// start stop flashing of the ASCII chars
-			iDoubleByteCmd |= (ch << 8);
 			handleCompleteMessage();
-			iCurMsgType = iDoubleByteCmd;
+			iCurMsgType = iDoubleByteCmd | (ch << 8);
 			iDoubleByteCmd = 0;
 			// if we start at a offset get last complete message from memory
 			uint8_t iCmd    = iCurMsgType & 0xFF;
 			uint8_t iCmdPar = iCurMsgType >> 8;
+
+			if ((iCmd == 0x6) || (iCmd == 0x7) || (iCmd == 0x8) || (iCmd == 0x9) || (iCmd == 0xA) || (iCmd == 0xE))
+			{
+				k2000bits[iCmd & 0xF] = iCmdPar;
+				if (!k2000bits.compare(k2000bitsOld)) {
+					k2000bitsOld.set(k2000bits);
+					printf("Option tp %02X -- %02X %02X %02X %02X %02X %02X\r\n", iCmd, k2000bits[6] & 0xFF, k2000bits[7] & 0xFF, k2000bits[8] & 0xFF, k2000bits[9] & 0xFF, k2000bits[10] & 0xFF, k2000bits[14] & 0xFF);
+					printf("%s\r\n", getDispHeadTxts().buf());
+					bIsUpdated = true;
+				}
+				iCurMsgType = 0;
+				continue;
+			}
+
 			// on the K2000 the message is usually preceeded by a single 0D folowed byt ye messaga in ASCII
 			// in some cases 0xD is used a <CR> and we overwrite the current line starting at position 0
-			if ((iCmd == 0x0D) && (iCmdPar >= 0x10))
+			if ((iCmd == 0x0D)||(iCmd == 0x04)||(iCmd == 0x03))
 			{
-				iCurMsgType = 0x04;
-				msg.set(msgLatest);
-				if (msg.length() == 0)
+				if (iCmdPar < 0x20)		// offset in the last message
+				{
+					if (iCmdPar > 0) msg.set(msgLatest); else msg.clear();
+					iMsgDupOffset = iCmdPar;
+					bCurMsgFlash = bLastMsgFlash;
+				}else{
+					msg.clear();
 					msg.append((char)iCmdPar);
-				else
-					msg[0] = iCmdPar;
-				iMsgDupOffset = 1;
-			}
-			if ((iCmd == 4) && (iCmdPar > 0))
-			{
-				if (msgDup.length() > 0) msg.set(msgDup);
-				else msg.set(msgLatest);
-				iMsgDupOffset = iCmdPar;
+					iMsgDupOffset = 0;
+				}
+				iCurMsgType = 0x04;
 			}
 			continue;
 		}
@@ -268,7 +290,7 @@ void keithleyDisplay::poll()
 
 		if (iCurMsgType) 
 		{
-			if ((flashChars) && ((iCurMsgType & 0xFF) == 04)) ch |= 0x80;
+			if ((flashChars) && ((iCurMsgType & 0xFF) == 04)){ ch |= 0x80; bCurMsgFlash = true; }
 
 			if (iMsgDupOffset)	// we need to overwrite the old message
 			{
@@ -295,9 +317,51 @@ void keithleyDisplay::poll()
 	}
 }
 
+void appendDescrK2000(ansStl::cST& res,uint8_t val,const char *t7,const char *t6,const char *t5,const char *t4,const char *t3,const char *t2,const char *t1,const char *t0)
+{
+	if (val == 0) return;
+	if (val & 0x01) { res.append(t0); res.append((char)' '); }
+	if (val & 0x02) { res.append(t1); res.append((char)' '); }
+	if (val & 0x04) { res.append(t2); res.append((char)' '); }
+	if (val & 0x08) { res.append(t3); res.append((char)' '); }
+	if (val & 0x10) { res.append(t4); res.append((char)' '); }
+	if (val & 0x20) { res.append(t5); res.append((char)' '); }
+	if (val & 0x40) { res.append(t6); res.append((char)' '); }
+	if (val & 0x80) { res.append(t7); res.append((char)' '); }
+}
+
 ansStl::cST keithleyDisplay::getDispHeadTxts()
 {
 	ansStl::cST res;
+	if (bSingleByteOptions)
+	{
+		appendDescrK2000(res,k2000bits[0x6],"-67-","-66-","-65-","-64-","-63-","-62-","-61-","-60-");
+		appendDescrK2000(res,k2000bits[0x7],"SHIFT","-76-","-75-","REAR","->|-",".>)}","4w","v-^");
+		appendDescrK2000(res,k2000bits[0x8],"-87-","-86-","-85-","-84-","TRIG","FAST","MEDIUM","SLOW");
+		appendDescrK2000(res,k2000bits[0x9],"-97-","REL","FILT","AUTO","-93-","*","-91-","-90-");
+		appendDescrK2000(res,k2000bits[0xA],"-A7-","-A6-","-A5-","-A4-","STEP","-A2-","-A1-","-A0-");
+		appendDescrK2000(res,k2000bits[0xE],"-E7-","-E6-","-E5-","-E4-","-E3-","-E2-","-E1-","-E0-");
+		return res;
+		//  6  7  8  9  A  E
+		// 00 10 00 00 00 00 rear
+		// 00 80 00 00 00 00 shift
+		// 00 01 00 00 00 00 <>
+		// 00 02 00 00 00 00 4w
+		// 00 04 00 00 00 00 .>) beep
+		// 00 08 00 00 00 00 ->|- diode
+
+		// 00 00 01 00 00 00 slow 
+		// 00 00 02 00 00 00 med
+		// 00 00 04 00 00 00 fast
+		// 00 00 08 00 00 00 trig
+		// 00 00 00 10 00 00 auto
+		// 00 00 00 20 00 00 flt   
+		// 00 00 00 40 00 00 rel
+		// 00 00 00 04 00 00 *
+		// 00 00 00 00 08 00 step
+	}
+
+
 	if (msg67bits & 0x0100) res.append("EDIT ");
 	if (msg67bits & 0x0200) res.append("ERR ");
 	if (msg67bits & 0x0400) res.append("REM ");
@@ -317,7 +381,7 @@ ansStl::cST keithleyDisplay::getDispHeadTxts()
 	return res;// "EDIT ERR REM TALK LSTN SRQ REAR REL FILT MATH 4W AUTO ARM TRIG * SMPL"
 }
 
-void showDisplay(ansStl::cST msg, ansStl::cST& msDup, ansStl::cST& msLst,int iDebugBits)
+void showDisplay(ansStl::cST msg, ansStl::cST& msLst,int iDebugBits)
 {
     #if defined(PICO_RP2040)
 	for (int i = 0; i < msg.length(); i++) if ((((uint8_t)msg[i]) >= 0x7F) || (msg[i] < 32)) msg[i] = '.';
@@ -325,49 +389,44 @@ void showDisplay(ansStl::cST msg, ansStl::cST& msDup, ansStl::cST& msLst,int iDe
 	for (int i = 0; i < msg.length(); i++) if (((uint8_t)msg[i]) > 0xB0) msg[i] &= 0x7F;
 	#endif
 	if (iDebugBits & 2)
-		printf("-%2d-%2d-%2d-",msDup.length(), msLst.length(), msg.length());
-	printf("\"%s\"\r\n", msg.buf());
+		printf("-%2d-%2d- ", msLst.length(), msg.length());
+	if (iDebugBits & 1)
+		printf("\"%s\"", msg.buf());
+	printf("\r\n");
 }
 
 
 void keithleyDisplay::handleCompleteMessage()
 {
 	if (iCurMsgType == 0) return;
-	uint8_t iCmd = iCurMsgType & 0xFF;
-	if (bSingleByteOptions) 
-	{
-		if ((iCmd == 0x6) || (iCmd == 0x7) || (iCmd == 0x8)|| (iCmd == 0x9)|| (iCmd == 0xA)|| (iCmd == 0xE)) 
-		{
-			k2000bits[iCmd] = msg[0];
-			msg.clear();
-			iCurMsgType = 0;
-			iReadLeng = 0;
-			iMsgDupOffset = 0;
-			if (!k2000bits.compare(k2000bitsOld)){
-				k2000bitsOld.set(k2000bits);
-				printf("Option tp %02X -- %02X %02X %02X %02X %02X %02X\r\n",iCmd,k2000bits[6] & 0xFF, k2000bits[7] & 0xFF, k2000bits[8] & 0xFF, k2000bits[9] & 0xFF, k2000bits[10] & 0xFF, k2000bits[14] & 0xFF);
-			}
-			return;
-		}
-	}
+
+	//printf("handleCompleteMessage 0x%X\r\n",iCurMsgType);
+
+	uint8_t iCmd = iCurMsgType & 0x0F;
+	uint8_t iPar = (iCurMsgType >> 8) & 0xFF;
+	iCurMsgType = 0;
+	iReadLeng = 0;
+	iMsgDupOffset = 0;
 
 	switch (iCmd)
 	{
 	case 0x0D:		
 		// 0D 02 and 0D 03 seen as memory dup line 
 		// 0D followed by char >= 20h (space) looks like normal EOL type of commit
-		msgDup.set(msg);
 	case 0x04:
 	{
-		if (iDebugBits & 1)
+		if (iDebugBits & 3)
 		{
-			uint8_t iCmdPar = iCurMsgType >> 8;
-			printf("-- %02X %02X --", iCmd, iCmdPar);
-			showDisplay(msg, msgDup, msgLatest,iDebugBits);
+			if (iDebugBits & 2)
+				printf("-- %02X %02X --", iCmd, iPar);
+			showDisplay(msg, msgLatest,iDebugBits);
 		}
+		if (msg.length() > 0)
+			msgLatest = msg;
 		bValidCom = true;
-		msgLatest = msg;
 		bIsUpdated = true;
+		bLastMsgFlash = bCurMsgFlash;
+		bCurMsgFlash = false;
 		break;
 	}
 	case 6:
@@ -400,7 +459,11 @@ void keithleyDisplay::handleCompleteMessage()
 		if (msg.length() == 2)
 		{
 			if (bValidCom)
+			{
 				bIsUpdated = true;
+				bLastMsgFlash = bCurMsgFlash;
+				bCurMsgFlash = false;
+			}
 			printf("06 %02X %02X", msg[0] & 0xFF, msg[1] & 0xFF);
 			break;
 		}
@@ -413,6 +476,8 @@ void keithleyDisplay::handleCompleteMessage()
 		if (msg.length() == 2)
 		{
 			bIsUpdated = true;
+			bLastMsgFlash = bCurMsgFlash;
+			bCurMsgFlash = false;
 			//printf("07 %02X %02X", msg[0] & 0xFF, msg[1] & 0xFF);
 			break;
 		}
@@ -430,11 +495,12 @@ void keithleyDisplay::handleCompleteMessage()
 	iMsgDupOffset = 0;
 }
 
-void keithleyDisplay::saveBuffer()
+void keithleyDisplay::saveBuffer(int iDumpLen /* = 0 */)
 {
 	ansStl::cST sFN;
 	ansStl::cST hMSG;
 	int iLeng = (_RingSize_ - 100) & 0xFFFE0;
+	if ((iDumpLen > 0) && (iDumpLen < iLeng)) iLeng = iDumpLen & 0xFFFE0;
 	int iStart = ringHead - iLeng;
 	if (iStart < 0) iStart += _RingSize_;
 	uint32_t lastMS = ringBufferMS[iStart];
@@ -452,7 +518,7 @@ void keithleyDisplay::saveBuffer()
 			for (int i = 0; i < iRowBytes; i++)
 			{
 				int idx = (iStart + iOfs + i) % _RingSize_;
-				hMSG.append(" %02X", ringBuffer[idx] & 0xFF);
+				hMSG.appendf(" %02X", ringBuffer[idx] & 0xFF);
 			}
 			hMSG.append("  ");
 			for (int i = 0; i < iRowBytes; i++)
@@ -481,7 +547,7 @@ void keithleyDisplay::saveBuffer()
 				uint32_t diffMS = ringBufferMS[idx] - lastMS;
 				lastMS += diffMS;
 				if (diffMS > 999) diffMS = 999;
-				hMSG.append("%3d", diffMS);
+				hMSG.appendf("%3d", diffMS);
 			}
 			hMSG.append("\r\n");
 
@@ -496,7 +562,7 @@ void keithleyDisplay::saveBuffer()
 		#ifdef _WIN32
 		fclose(f1);
 		#endif
-		printf("saved to %s done", sFN.buf());
+		printf("saved to %s done\r\n", sFN.buf());
 	}
 }
 

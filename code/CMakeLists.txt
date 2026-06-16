@@ -59,7 +59,7 @@ target_include_directories(K2001_oled PRIVATE
 # Add any user requested libraries
 target_link_libraries(K2001_oled 
         hardware_spi
-        pico_stdlib
+ #       pico_stdlib
  #       pico_stdio_uart 
         pico_stdio_usb
         )

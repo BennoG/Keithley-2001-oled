@@ -13,6 +13,7 @@
 #include <fstream>
 #include <thread>
 
+extern int iDebugBits;			// for debugging so we can log different kind of events (defined in main.cpp)
 
 #include "SSD1322.h"
 
@@ -58,40 +59,44 @@ enum SSD1322Cmd : uint8_t {
 // 40  X
 // 80
 
-uint8_t font5x7L[32+96+32][5] = {	// k7001 display special characters 0x00 - 0x9F Below 0x20 and above 0x7F are mostly blank, but some are used for special symbols and bar graph elements
-	{0x00,0x00,0x00,0x00,0x00},	// 0x00
-	{0x00,0x00,0x00,0x00,0x00},	// 0x01
-	{0x00,0x00,0x00,0x00,0x00},	// 0x02
-	{0x00,0x00,0x00,0x00,0x00},	// 0x03
-	{0x00,0x00,0x00,0x00,0x00},	// 0x04
-	{0x00,0x00,0x00,0x00,0x00},	// 0x05
-	{0x00,0x00,0x00,0x00,0x00},	// 0x06
-	{0x00,0x00,0x00,0x00,0x00},	// 0x07
-	{0x00,0x00,0x00,0x00,0x00},	// 0x08
-	{0x00,0x00,0x00,0x00,0x00},	// 0x09
-	{0x00,0x00,0x00,0x00,0x00},	// 0x0A
-	{0x00,0x00,0x00,0x00,0x00},	// 0x0B
-	{0x00,0x00,0x00,0x00,0x00},	// 0x0C
-	{0x00,0x00,0x00,0x00,0x00},	// 0x0D
-	{0x00,0x00,0x00,0x00,0x00},	// 0x0E
-	{0x00,0x00,0x00,0x00,0x00},	// 0x0F
-	{0x40,0x3C,0x20,0x20,0x1C},	// 0x10		u (micro)
-	{0x00,0x00,0x00,0x00,0x00},	// 0x11
-	{0x5C,0x62,0x01,0x62,0x5C},	// 0x12     Ohm (Omega)
-	{0x0E,0x11,0x11,0x0E,0x00},	// 0x13     o (Celsius degree)
-	{0x70,0x70,0x7F,0x00,0x00},	// 0x14     bar graph stand left block
-	{0x00,0x00,0x7F,0x70,0x70},	// 0x15     bar graph stand right block
-	{0x70,0x70,0x7F,0x70,0x70},	// 0x16     bar graph mid bard
-	{0x70,0x70,0x70,0x00,0x00},	// 0x17     bar graph left block
-	{0x00,0x00,0x70,0x70,0x70},	// 0x18     bar graph right block
-	{0x70,0x70,0x70,0x70,0x70},	// 0x19     bar graph  block
-	{0x10,0x18,0x1C,0x18,0x10},	// 0x1A     ^ up arrow
-	{0x04,0x0C,0x1C,0x0C,0x04},	// 0x1B     v down arrow
-	{0x00,0x08,0x1C,0x3E,0x00},	// 0x1C		< left arrow
-	{0x00,0x3E,0x1C,0x08,0x00},	// 0x1D     > rithg arrow
-	{0x2A,0x55,0x2A,0x55,0x2A},	// 0x1E		display test pattern
-	{0x55,0x2A,0x55,0x2A,0x55},	// 0x1F     display test pattern
+const uint8_t k2001Remap[][2]
+{
+	// original - replacement special font
+	{ 0x10,0x20 },	// 0x10		B5 u (micro)
+	{ 0x11,0x21 },	// 0x11
+	{ 0x12,0x22 },	// 0x12     AF Ohm (Omega)
+	{ 0x13,0x23 },	// 0x13     B0 o (Celsius degree)
+	{ 0x14,0x24 },	// 0x14     bar graph stand left block
+	{ 0x15,0x25 },	// 0x15     bar graph stand right block
+	{ 0x16,0x26 },	// 0x16     bar graph mid bard
+	{ 0x17,0x27 },	// 0x17     bar graph left block
+	{ 0x18,0x28 },	// 0x18     bar graph right block
+	{ 0x19,0x29 },	// 0x19     bar graph  block
+	{ 0x1A,0x2A },	// 0x1A     ^ up arrow
+	{ 0x1B,0x2B },	// 0x1B     v down arrow
+	{ 0x1C,0x2C },	// 0x1C		< left arrow
+	{ 0x1D,0x2D },	// 0x1D     > rithg arrow
+	{ 0x1E,0x2E },	// 0x1E		display test pattern
+	{ 0x1F,0x2F },	// 0x1F     display test pattern
 
+	{ 0x90,0x20 },	// 0x90  horizontal top line
+	{ 0x91,0x21 },	// 0x91  horizontal 2nd line
+	{ 0x92,0x22 },	// 0x92  horizontal 3th line
+	{ 0x93,0x23 },	// 0x93  horizontal 4th line
+	{ 0x94,0x24 },	// 0x94  horizontal 5th line
+	{ 0x95,0x25 },	// 0x95  horizontal 6th line
+	{ 0x96,0x26 },	// 0x96  horizontal bottom line
+	{ 0x97,0x27 },	// 0x97  vertical left
+	{ 0x98,0x28 },	// 0x98  vertical 2nd
+	{ 0x99,0x29 },	// 0x99  vertical 3th
+	{ 0x9A,0x2A },	// 0x9A  vertical 4th
+	{ 0x9B,0x2B },	// 0x9B  vertical right
+	{ 0x9C,0x2C },	// 0x9C  Up and Down arrow
+};
+
+
+
+const uint8_t font5x7L[][5] = {	// k7001 display special characters 0x00 - 0x9F Below 0x20 and above 0x7F are mostly blank, but some are used for special symbols and bar graph elements
 	{0x00,0x00,0x00,0x00,0x00}, // ' '
 	{0x00,0x00,0x5F,0x00,0x00}, // '!'
 	{0x00,0x07,0x00,0x07,0x00}, // '"'
@@ -188,38 +193,6 @@ uint8_t font5x7L[32+96+32][5] = {	// k7001 display special characters 0x00 - 0x9
 	{0x00,0x41,0x36,0x08,0x00}, // '}'
 	{0x10,0x08,0x08,0x10,0x08}, // '~'
 	{0x7F,0x7F,0x7F,0x7F,0x7F}, // 7F DEL (placeholder)
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x80
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x81
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x82
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x83
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x84
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x85
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x86
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x87
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x88
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x89
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x8A
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x8B
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x8C
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x8D
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x8E
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x8F
-	{ 0x01,0x01,0x01,0x01,0x01 },	// 0x90  horizontal top line
-	{ 0x02,0x02,0x02,0x02,0x02 },	// 0x91  horizontal 2nd line
-	{ 0x04,0x04,0x04,0x04,0x04 },	// 0x92  horizontal 3th line
-	{ 0x08,0x08,0x08,0x08,0x08 },	// 0x93  horizontal 4th line
-	{ 0x10,0x10,0x10,0x10,0x10 },	// 0x94  horizontal 5th line
-	{ 0x20,0x20,0x20,0x20,0x20 },	// 0x95  horizontal 6th line
-	{ 0x40,0x40,0x40,0x40,0x40 },	// 0x96  horizontal bottom line
-	{ 0x7F,0x00,0x00,0x00,0x00 },	// 0x97  vertical left
-	{ 0x00,0x7F,0x00,0x00,0x00 },	// 0x98  vertical 2nd
-	{ 0x00,0x00,0x7F,0x00,0x00 },	// 0x99  vertical 3th
-	{ 0x00,0x00,0x00,0x7F,0x00 },	// 0x9A  vertical 4th
-	{ 0x00,0x00,0x00,0x00,0x7F },	// 0x9B  vertical right
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x9C
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x9D
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x9E
-	{ 0x00,0x00,0x00,0x00,0x00 },	// 0x9F
 };
 
 SSD1322::SSD1322()
@@ -271,6 +244,56 @@ void SSD1322::setPixel(int x, int y, uint8_t gray)
 		fb_[idx] = (fb_[idx] & 0xF0) | gray;         // low nibble = right pixel
 	else
 		fb_[idx] = (fb_[idx] & 0x0F) | (gray << 4);  // high nibble = left pixel
+}
+void SSD1322::aaPixel(int x, int y,uint8_t gray)
+{
+	if (getPixel(x, y) == gray)
+		return;
+	bool g1 = getPixel(x - 1, y) == gray;
+	bool g2 = getPixel(x, y - 1) == gray;
+	bool g3 = getPixel(x + 1, y) == gray;
+	bool g4 = getPixel(x, y + 1) == gray;
+	if ((g1 && g2) || (g2 && g3) || (g3 && g4) || (g4 && g1))
+		setPixel(x, y, gray / 2);
+}
+
+void SSD1322::fastAA(int y1, int y2)
+{
+	int dwh = DISPLAY_WIDTH / 2;
+	if (y1 < 0) y1 = 0;
+	if (y1 > DISPLAY_HEIGHT) return;
+	if (y2 < 0) y2 = DISPLAY_HEIGHT;
+	if (y2 > DISPLAY_HEIGHT) y2 = DISPLAY_HEIGHT;
+	if (y1 > y2) return;
+	int idxStart = y1 * dwh;
+	int idxEinde = (y2 + 1) * dwh;
+	if (idxEinde > fb_.size()) idxEinde = fb_.size();
+
+	uint8_t grsOld = fb_[idxStart];
+	for (int i = idxStart + 1; i < idxEinde; i++)
+	{
+		uint8_t grsNew = fb_[i];
+		if (grsNew == grsOld) continue;
+		int y = i / dwh;
+		int x = (i % dwh) * 2;
+		uint8_t g1 = (grsOld >> 4);
+		uint8_t g2 = grsOld & 0xF;
+		uint8_t g3 = (grsNew >> 4);
+		uint8_t g4 = grsNew & 0xF;
+		grsOld = grsNew;
+		if ((g1 == 0) && (g2 > 0))	aaPixel(x - 2, y, g2);
+		if (g2 == 0)
+		{
+			if (g1 > 0) aaPixel(x - 1, y, g1);
+			else if (g3 > 0) aaPixel(x - 1, y, g3);
+		}
+		if (g3 == 0)
+		{
+			if (g2 > 0) aaPixel(x , y, g2);
+			else if (g4 > 0) aaPixel(x , y, g4);
+		}
+		if ((g4 == 0) && (g3 > 0)) aaPixel(x + 1 , y, g3);
+	}
 }
 
 // Get pixel gray value
@@ -324,43 +347,96 @@ void SSD1322::drawCircle(int cx, int cy, int r, uint8_t gray)
 	}
 }
 
-static uint8_t lastMisChar = 0;
+int  SSD1322::drawChar(const GFXfont* gfx_font, int x, int y, uint8_t c, uint8_t fg, uint8_t bg /*= 0 */)
+{
+	if (gfx_font == NULL) return 0;
+	if (c < gfx_font->first) return 0;		// we don't have a character for this char
+	if (c > gfx_font->last) return 0;		// we don't have a character for this char
+
+	bool bNarrow = (c == '.') || (c == ';') || (c == ',') || (c == ':') || (c == ' ');
+	bNarrow = false;
+
+	c -= (uint8_t)gfx_font->first;          //convert input char to corresponding byte from font array
+	GFXglyph* glyph = gfx_font->glyph + c;  //get pointer of glyph corresponding to char
+	uint8_t* bitmap = gfx_font->bitmap;     //get pointer of char bitmap
+
+	uint16_t bo = glyph->bitmapOffset;
+	uint8_t width = glyph->width;
+	uint8_t height = glyph->height;
+
+	int8_t x_offset = glyph->xOffset;
+	int8_t y_offset = glyph->yOffset;
+
+	uint8_t bit = 0;
+	uint8_t bits = 0;
+
+	// this one is 21 for the big font
+	if (glyph->xAdvance <= 9) bNarrow = false;
+
+	// for the 18pt font this is 22
+	if (bNarrow)  x -= (glyph->xAdvance * 2 / 5);
+
+	for (uint8_t y_pos = 0; y_pos < height; y_pos++)
+	{
+		for (uint8_t x_pos = 0; x_pos < width; x_pos++)
+		{
+			if (!(bit++ & 7))
+				bits = (*(const unsigned char *)(&bitmap[bo++]));
+			if (bNarrow)	// for narrow we only do the on bits not the off bits
+			{
+				if (bits & 0x80) setPixel(x + x_offset + x_pos, y + y_offset + y_pos,  fg);
+			}else
+				setPixel(x + x_offset + x_pos, y + y_offset + y_pos, (bits & 0x80) ? fg : bg);
+			bits <<= 1;
+		}
+	}
+
+	//if (height > 6)
+	//{
+	//	for (uint8_t y_pos = 0; y_pos < height; y_pos++)
+	//	{
+	//		for (uint8_t x_pos = 0; x_pos < width; x_pos++)
+	//		{
+	//			aaPixel(x + x_offset + x_pos, y + y_offset + y_pos, fg);
+	//		}
+	//	}
+	//}
+
+	if (bNarrow) return (glyph->xAdvance / 3);
+	return glyph->xAdvance;
+}
+
 
 // Draw 5x7 ASCII character (built-in font)
-void SSD1322::drawChar(int x, int y, uint8_t c, uint8_t fg, uint8_t bg /* b= 0 */)
+int SSD1322::drawChar(int x, int y, uint8_t c, uint8_t fg, uint8_t bg /* = 0 */)
 {
-	bool bDefined = false;
-	//if (c >= 0x80) printf("char 0x%X", c);
-
 	if (c >= 0xA0) { c &= 0x7F; fg = colorFlash; }
-	if (c == 0x20) bDefined = true;
-	for (int i = 0; i < 5; i++) bDefined |= (font5x7L[c][i] != 0);
-	if ((c < 0x20 || c > 0x9F) && (bDefined == false))
-	{
-		if (lastMisChar == 0) { lastMisChar = c; printf("unknown char %d 0x%X", c, c); }
-		if (c == lastMisChar) c = '!'; else c = '?';
-	}
+	if (curFontS) return drawChar(curFontS, x, y + curFontShigh, c, fg, bg) + 1;
+
+	if ((c < 0x20) || (c > 0x7F)) c = '?';
+
+	c -= 0x20;
 	const uint8_t* glyph = font5x7L[c];
 	for (int col = 0; col < 5; ++col) {
 		uint8_t bits = glyph[col];
 		for (int row = 0; row < 7; ++row)
 			setPixel(x + col, y + row, (bits >> row) & 1 ? fg : bg);
 	}
+	return 6;	// 5 pixels char + 1 pixel space
 }
 
-void SSD1322::drawCharB(int x, int y, uint8_t c, uint8_t fg, uint8_t bg /*= 0*/)
+int SSD1322::drawCharB(int x, int y, uint8_t c, uint8_t fg, uint8_t bg /* = 0*/)
 {
-	bool bDefined = false;
-	//if (c >= 0xA0) printf("char 0x%X", c);
 	if (c >= 0xA0) { c &= 0x7F; fg = colorFlash; }
-	if (c == 0x20) bDefined = true;
-	for (int i = 0; i < 5; i++) bDefined |= (font5x7L[c][i] != 0);
-	if ((c < 0x20 || c > 0x9F) && (bDefined == false))
+
+	if (curFontB)
 	{
-		if (lastMisChar == 0) { lastMisChar = c; printf("unknown char %d 0x%X", c, c); }
-		if (c == lastMisChar) c = '!'; else c = '?';
+		int iRes = drawChar(curFontB, x, y + curFontBhigh, c, fg, bg);
+		if (iRes > 0) return iRes + 1;
 	}
-	//if (c < 32 || c > 127) c = '?';
+
+	if ((c < 0x20) || (c > 0x7F)) c = '?';
+	c -= 0x20;
 	const uint8_t* glyph = font5x7L[c];
 	for (int col = 0; col < 5; ++col) {
 		uint8_t bits = glyph[col];
@@ -374,23 +450,38 @@ void SSD1322::drawCharB(int x, int y, uint8_t c, uint8_t fg, uint8_t bg /*= 0*/)
 			setPixel(x + col * 2 + 1, y + row * 3 + 2, (bits >> row) & 1 ? fg : bg);
 		}
 	}
+	return 11;	// 10 pixel char + 1 pixel space
 }
 
 // Draw null-terminated string
 void SSD1322::drawString(int x, int y, const char* str, uint8_t fg, uint8_t bg /* = 0 */,int iHorExtra /* = 0 */)
 {
-	for (; *str; ++str, x += 6)
+	for (; *str; ++str)
 	{
-		drawChar(x, y, *str, fg, bg);
+		x += drawChar(x, y, *str, fg, bg);
 		x += iHorExtra;
 	}
 }
 
-void SSD1322::drawStringB(int x, int y, const char* str, uint8_t fg, uint8_t bg /*= 0*/)
+void SSD1322::drawString(const GFXfont *font, int x, int y, const char *str, uint8_t fg, uint8_t bg, int iHorExtra)
 {
-	for (; *str; ++str, x += 12)
-		drawCharB(x, y, *str, fg, bg);
+	if (font) y+= (font->yAdvance - 1);	// to make it the same as the bitmap font
+	for (; *str; ++str)
+	{
+		x += drawChar(font,x, y, *str, fg, bg);
+		x += iHorExtra;
+	}
 }
+
+void SSD1322::drawStringB(int x, int y, const char* str, uint8_t fg, uint8_t bg /*= 0*/,int iHorExtra /* = 0 */)
+{
+	for (; *str; ++str)
+	{
+		x += drawCharB(x, y, *str, fg, bg);
+		x += iHorExtra;
+	}
+}
+
 
 // Push framebuffer to display GDDRAM
 void SSD1322::update() 
@@ -517,7 +608,6 @@ void SSD1322::spiWrite(const uint8_t* buf, size_t len)
     gpio_put(PIN_CS	, 0);   // drive CS low to select the device
 	spi_write_blocking(SPI_PORT, buf, len);
     gpio_put(PIN_CS	, 1);   // drive CS high to release the device
-
 	#else
 	static constexpr size_t CHUNK = 4096;
 	while (len) {
